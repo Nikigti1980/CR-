@@ -1,0 +1,66 @@
+import streamlit as st
+import pandas as pd
+from io import BytesIO
+
+st.title('Conversion Rate & Upsell Rate Analyzer')
+
+# Зареждане на файли
+st.header('1. Заредете си двата файла')
+sales_file = st.file_uploader("Зареди Excel справка с продажби", type=["xlsx"])
+visits_file = st.file_uploader("Зареди CSV файл с посещения", type=["csv"])
+
+if sales_file and visits_file:
+
+    sales_data = pd.read_excel(sales_file)
+    visits_data = pd.read_csv(visits_file)
+
+    # Показваме колоните, за да знаем какво има в CSV-то
+    st.write("📚 Колони във файла с посещения:", visits_data.columns.tolist())
+
+    # Проверка дали колоните съществуват
+    if 'time' in visits_data.columns and 'entry' in visits_data.columns:
+        sales_data['От дата'] = pd.to_datetime(sales_data['От дата'])
+        visits_data['time'] = pd.to_datetime(visits_data['time'])
+
+        sales_data['Ден'] = sales_data['От дата'].dt.date
+        visits_data['Ден'] = visits_data['time'].dt.date
+
+        # Агрегиране на посещения по ден
+        daily_visits = visits_data.groupby('Ден')['entry'].sum().reset_index()
+        daily_visits.rename(columns={'entry': 'Посещения'}, inplace=True)
+
+        # Сливане на данните
+        merged_data = pd.merge(sales_data, daily_visits, on='Ден', how='left')
+
+        # Изчисляване на конвършън рейт
+        merged_data['Conversion Rate (%)'] = (merged_data['Продажби'] / merged_data['Посещения']) * 100
+
+        # Изчисляване на Upsell Rate
+        merged_data['Upsell Rate (%)'] = (merged_data['Оборот колич.'] / merged_data['Продажби']) * 100
+
+        # Извод
+        st.header('2. Резултати')
+        st.dataframe(merged_data)
+
+        # Сваляне на обработените данни
+        def to_excel(df):
+            output = BytesIO()
+            with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
+                df.to_excel(writer, index=False, sheet_name='Analysis')
+            processed_data = output.getvalue()
+            return processed_data
+
+        excel_data = to_excel(merged_data)
+
+        st.download_button(
+            label="💾 Свали анализа в Excel",
+            data=excel_data,
+            file_name='conversion_upsell_analysis.xlsx',
+            mime='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+        )
+
+    else:
+        st.error('Грешка: Файлът с посещения трябва да съдържа колони "time" и "entry". Проверете CSV файла си.')
+
+else:
+    st.warning('Моля, заредете и двата файла, за да извършим анализа.')

@@ -12,55 +12,63 @@ visits_file = st.file_uploader("Зареди CSV файл с посещения"
 if sales_file and visits_file:
 
     sales_data = pd.read_excel(sales_file)
-    visits_data = pd.read_csv(visits_file)
 
-    # Показваме колоните, за да знаем какво има в CSV-то
-    st.write("📚 Колони във файла с посещения:", visits_data.columns.tolist())
+    # Зареждане само на първите две колони от CSV (без имена)
+    visits_data = pd.read_csv(visits_file, header=None, usecols=[0, 1], names=['Ден', 'Посещения'])
 
-    # Проверка дали колоните съществуват
-    if 'time' in visits_data.columns and 'entry' in visits_data.columns:
-        sales_data['От дата'] = pd.to_datetime(sales_data['От дата'])
-        visits_data['time'] = pd.to_datetime(visits_data['time'])
+    # Преобразуване на деня в дата
+    visits_data['Ден'] = visits_data['Ден'].astype(int)
 
-        sales_data['Ден'] = sales_data['От дата'].dt.date
-        visits_data['Ден'] = visits_data['time'].dt.date
+    # Вземаме и месеца/годината от файла с продажби
+    # За да можем да построим дата от ден
+    first_date = sales_data['От дата'].min()
+    year = first_date.year
+    month = first_date.month
 
-        # Агрегиране на посещения по ден
-        daily_visits = visits_data.groupby('Ден')['entry'].sum().reset_index()
-        daily_visits.rename(columns={'entry': 'Посещения'}, inplace=True)
+    # Създаваме пълна дата за всяко посещение
+    visits_data['Дата'] = pd.to_datetime({
+        'year': year,
+        'month': month,
+        'day': visits_data['Ден']
+    })
 
-        # Сливане на данните
-        merged_data = pd.merge(sales_data, daily_visits, on='Ден', how='left')
+    # Форматиране на данните
+    sales_data['От дата'] = pd.to_datetime(sales_data['От дата'])
+    sales_data['Ден'] = sales_data['От дата'].dt.date
+    visits_data['Ден'] = visits_data['Дата'].dt.date
 
-        # Изчисляване на конвършън рейт
-        merged_data['Conversion Rate (%)'] = (merged_data['Продажби'] / merged_data['Посещения']) * 100
+    # Агрегиране на посещения по ден
+    daily_visits = visits_data.groupby('Ден')['Посещения'].sum().reset_index()
 
-        # Изчисляване на Upsell Rate
-        merged_data['Upsell Rate (%)'] = (merged_data['Оборот колич.'] / merged_data['Продажби']) * 100
+    # Сливане на данните
+    merged_data = pd.merge(sales_data, daily_visits, on='Ден', how='left')
 
-        # Извод
-        st.header('2. Резултати')
-        st.dataframe(merged_data)
+    # Изчисляване на конвършън рейт
+    merged_data['Conversion Rate (%)'] = (merged_data['Продажби'] / merged_data['Посещения']) * 100
 
-        # Сваляне на обработените данни
-        def to_excel(df):
-            output = BytesIO()
-            with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
-                df.to_excel(writer, index=False, sheet_name='Analysis')
-            processed_data = output.getvalue()
-            return processed_data
+    # Изчисляване на Upsell Rate
+    merged_data['Upsell Rate (%)'] = (merged_data['Оборот колич.'] / merged_data['Продажби']) * 100
 
-        excel_data = to_excel(merged_data)
+    # Извод
+    st.header('2. Резултати')
+    st.dataframe(merged_data)
 
-        st.download_button(
-            label="💾 Свали анализа в Excel",
-            data=excel_data,
-            file_name='conversion_upsell_analysis.xlsx',
-            mime='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
-        )
+    # Сваляне на обработените данни
+    def to_excel(df):
+        output = BytesIO()
+        with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
+            df.to_excel(writer, index=False, sheet_name='Analysis')
+        processed_data = output.getvalue()
+        return processed_data
 
-    else:
-        st.error('Грешка: Файлът с посещения трябва да съдържа колони "time" и "entry". Проверете CSV файла си.')
+    excel_data = to_excel(merged_data)
+
+    st.download_button(
+        label="💾 Свали анализа в Excel",
+        data=excel_data,
+        file_name='conversion_upsell_analysis.xlsx',
+        mime='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+    )
 
 else:
     st.warning('Моля, заредете и двата файла, за да извършим анализа.')

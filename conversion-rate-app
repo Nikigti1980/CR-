@@ -16,11 +16,13 @@ if sales_file and visits_file:
     # Зареждане само на първите две колони от CSV (без имена)
     visits_data = pd.read_csv(visits_file, header=None, usecols=[0, 1], names=['Ден', 'Посещения'])
 
-    # Преобразуване на деня в дата
+    # Премахване на редове с липсващи стойности
+    visits_data = visits_data.dropna()
+
+    # Преобразуване на деня в цяло число
     visits_data['Ден'] = visits_data['Ден'].astype(int)
 
     # Вземаме и месеца/годината от файла с продажби
-    # За да можем да построим дата от ден
     first_date = sales_data['От дата'].min()
     year = first_date.year
     month = first_date.month
